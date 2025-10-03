@@ -1,13 +1,14 @@
 import os
 
-from agent.tools_and_schemas import SearchQueryList, Reflection
+from agent.tools_and_schemas import SearchQueryList, Reflection, RouteDecision
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Send
 from langgraph.graph import StateGraph
 from langgraph.graph import START, END
 from langchain_core.runnables import RunnableConfig
 from google.genai import Client
+from typing import Literal
 
 from agent.state import (
     OverallState,
@@ -22,6 +23,8 @@ from agent.prompts import (
     web_searcher_instructions,
     reflection_instructions,
     answer_instructions,
+    router_instructions,
+    conversational_instructions,
 )
 from langchain_google_genai import ChatGoogleGenerativeAI
 from agent.utils import (
@@ -36,11 +39,65 @@ load_dotenv()
 if os.getenv("GEMINI_API_KEY") is None:
     raise ValueError("GEMINI_API_KEY is not set")
 
+# Enable LangSmith tracing if API key is provided
+if os.getenv("LANGSMITH_API_KEY"):
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    if not os.getenv("LANGCHAIN_PROJECT"):
+        os.environ["LANGCHAIN_PROJECT"] = "fullstack-rag-agent"
+
 # Used for Google Search API
 genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 # Nodes
+def route_query(state: OverallState, config: RunnableConfig) -> dict:
+    """LangGraph node that routes user queries to conversational or research paths.
+
+    Analyzes the user's message to determine if it requires web research or can be
+    answered conversationally (greetings, chitchat, clarifications).
+
+    Args:
+        state: Current graph state containing the user's messages
+        config: Configuration for the runnable, including LLM provider settings
+
+    Returns:
+        Dictionary with route_decision key containing "conversational" or "research"
+    """
+    configurable = Configuration.from_runnable_config(config)
+
+    # Get the latest user message
+    user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
+    if not user_messages:
+        return {"route_decision": "conversational"}
+
+    latest_message = user_messages[-1].content
+
+    # Get conversation context (last few messages for context)
+    conversation_context = "\n".join(
+        [f"{msg.type}: {msg.content}" for msg in state["messages"][-3:]]
+    ) if len(state["messages"]) > 1 else "No previous context"
+
+    # Format the prompt
+    formatted_prompt = router_instructions.format(
+        user_message=latest_message,
+        conversation_context=conversation_context,
+    )
+
+    # Initialize router model
+    llm = ChatGoogleGenerativeAI(
+        model=configurable.router_model,
+        temperature=0,
+        max_retries=2,
+        api_key=os.getenv("GEMINI_API_KEY"),
+    )
+    structured_llm = llm.with_structured_output(RouteDecision)
+
+    # Get routing decision
+    result = structured_llm.invoke(formatted_prompt)
+
+    return {"route_decision": result.intent}
+
+
 def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerationState:
     """LangGraph node that generates search queries based on the User's question.
 
@@ -265,18 +322,94 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
     }
 
 
+def conversational_response(state: OverallState, config: RunnableConfig):
+    """LangGraph node that generates friendly conversational responses.
+
+    Handles greetings, chitchat, and simple questions without triggering web research.
+
+    Args:
+        state: Current graph state containing conversation history
+        config: Configuration for the runnable, including LLM provider settings
+
+    Returns:
+        Dictionary with messages key containing the conversational response
+    """
+    configurable = Configuration.from_runnable_config(config)
+
+    # Get the latest user message
+    user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
+    latest_message = user_messages[-1].content if user_messages else ""
+
+    # Format conversation history for context
+    conversation_history = "\n".join(
+        [f"{msg.type.upper()}: {msg.content}" for msg in state["messages"][-5:]]
+    )
+
+    # Format the prompt
+    current_date = get_current_date()
+    formatted_prompt = conversational_instructions.format(
+        current_date=current_date,
+        conversation_history=conversation_history,
+        user_message=latest_message,
+    )
+
+    # Initialize conversational model
+    llm = ChatGoogleGenerativeAI(
+        model=configurable.conversational_model,
+        temperature=0.7,
+        max_retries=2,
+        api_key=os.getenv("GEMINI_API_KEY"),
+    )
+
+    result = llm.invoke(formatted_prompt)
+
+    return {"messages": [AIMessage(content=result.content)]}
+
+
+def decide_route(state: OverallState) -> Literal["conversational_response", "generate_query"]:
+    """Routing function that decides the next node based on intent classification.
+
+    Args:
+        state: Current graph state containing the route_decision
+
+    Returns:
+        String literal indicating next node: "conversational_response" or "generate_query"
+    """
+    if state.get("route_decision") == "conversational":
+        return "conversational_response"
+    else:
+        return "generate_query"
+
+
 # Create our Agent Graph
 builder = StateGraph(OverallState, config_schema=Configuration)
 
-# Define the nodes we will cycle between
+# Define all nodes
+builder.add_node("route_query", route_query)
+builder.add_node("conversational_response", conversational_response)
 builder.add_node("generate_query", generate_query)
 builder.add_node("web_research", web_research)
 builder.add_node("reflection", reflection)
 builder.add_node("finalize_answer", finalize_answer)
 
-# Set the entrypoint as `generate_query`
-# This means that this node is the first one called
-builder.add_edge(START, "generate_query")
+# Set the entrypoint as `route_query`
+# This is the first node called to determine conversational vs research path
+builder.add_edge(START, "route_query")
+
+# Add conditional routing based on intent classification
+builder.add_conditional_edges(
+    "route_query",
+    decide_route,
+    {
+        "conversational_response": "conversational_response",
+        "generate_query": "generate_query",
+    },
+)
+
+# Conversational path ends directly
+builder.add_edge("conversational_response", END)
+
+# Research path continues with existing flow
 # Add conditional edge to continue with search queries in a parallel branch
 builder.add_conditional_edges(
     "generate_query", continue_to_web_research, ["web_research"]

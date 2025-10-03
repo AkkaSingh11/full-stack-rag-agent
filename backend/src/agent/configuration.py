@@ -8,6 +8,20 @@ from langchain_core.runnables import RunnableConfig
 class Configuration(BaseModel):
     """The configuration for the agent."""
 
+    router_model: str = Field(
+        default="gemini-2.5-flash",
+        metadata={
+            "description": "The name of the language model to use for routing decisions."
+        },
+    )
+
+    conversational_model: str = Field(
+        default="gemini-2.5-flash",
+        metadata={
+            "description": "The name of the language model to use for conversational responses."
+        },
+    )
+
     query_generator_model: str = Field(
         default="gemini-2.5-flash",
         metadata={

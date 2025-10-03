@@ -29,7 +29,21 @@ export default function App() {
     messagesKey: "messages",
     onUpdateEvent: (event: any) => {
       let processedEvent: ProcessedEvent | null = null;
-      if (event.generate_query) {
+      if (event.route_query) {
+        const routeDecision = event.route_query?.route_decision;
+        processedEvent = {
+          title: "Routing Query",
+          data: routeDecision === "conversational"
+            ? "Detected conversational query - generating direct response"
+            : "Detected research query - initiating web search",
+        };
+      } else if (event.conversational_response) {
+        processedEvent = {
+          title: "Conversational Response",
+          data: "Generating friendly response",
+        };
+        hasFinalizeEventOccurredRef.current = true;
+      } else if (event.generate_query) {
         const searchQuery = event.generate_query?.search_query;
         const queryData = Array.isArray(searchQuery)
           ? searchQuery.join(", ")

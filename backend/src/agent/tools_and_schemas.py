@@ -21,3 +21,12 @@ class Reflection(BaseModel):
     follow_up_queries: List[str] = Field(
         description="A list of follow-up queries to address the knowledge gap."
     )
+
+
+class RouteDecision(BaseModel):
+    intent: str = Field(
+        description="The classified intent: either 'conversational' for greetings, chitchat, follow-ups, or 'research' for questions requiring web search."
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why this intent was chosen."
+    )
