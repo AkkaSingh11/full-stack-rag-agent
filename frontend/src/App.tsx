@@ -30,12 +30,18 @@ export default function App() {
     onUpdateEvent: (event: any) => {
       let processedEvent: ProcessedEvent | null = null;
       if (event.generate_query) {
+        const searchQuery = event.generate_query?.search_query;
+        const queryData = Array.isArray(searchQuery)
+          ? searchQuery.join(", ")
+          : "";
         processedEvent = {
           title: "Generating Search Queries",
-          data: event.generate_query?.search_query?.join(", ") || "",
+          data: queryData,
         };
       } else if (event.web_research) {
-        const sources = event.web_research.sources_gathered || [];
+        const sources = Array.isArray(event.web_research.sources_gathered)
+          ? event.web_research.sources_gathered
+          : [];
         const numSources = sources.length;
         const uniqueLabels = [
           ...new Set(sources.map((s: any) => s.label).filter(Boolean)),
