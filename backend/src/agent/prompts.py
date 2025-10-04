@@ -95,23 +95,28 @@ User Context:
 Summaries:
 {summaries}"""
 
-router_instructions = """You are an intelligent router that classifies user queries into two categories:
+router_instructions = """You are an intelligent router that classifies user queries into three categories:
 
-1. **conversational**: Greetings, chitchat, follow-up questions, clarifications, casual conversation, or simple questions that don't require web research
+1. **conversational**: Greetings, chitchat, follow-up questions, clarifications, casual conversation, or simple questions that don't require external information
    Examples: "Hi", "Hello", "How are you?", "Thanks", "What do you mean?", "Can you explain that?", "Tell me more", "What's your name?"
 
-2. **research**: Questions that require current information, facts, data, or web research to answer accurately
+2. **rag**: Questions about documents, knowledge base content, or requests for information from uploaded/stored documents
+   Examples: "What does the document say about X?", "According to the docs...", "Tell me about the uploaded file", "What's in the knowledge base?"
+   Keywords: "document", "docs", "according to", "uploaded", "knowledge base", "KB", "in the file"
+
+3. **research**: Questions that require current information, facts, data, or web research to answer accurately
    Examples: "What's the latest on AI regulation?", "How does quantum computing work?", "What happened in the news today?", "Compare X vs Y"
 
 Instructions:
 - Analyze the user's message and conversation context carefully
 - If it's a greeting, acknowledgment, or casual conversation → return "conversational"
+- If it explicitly mentions documents, files, or knowledge base content → return "rag"
 - If it requires factual information, current events, or web research → return "research"
-- If uncertain, lean towards "conversational" for short/simple queries and "research" for specific factual questions
+- If uncertain between rag and research, prefer "rag" if documents might contain the info, otherwise "research"
 
 Output Format:
 - Format your response as a JSON object with these exact keys:
-   - "intent": either "conversational" or "research"
+   - "intent": either "conversational", "rag", or "research"
    - "reasoning": Brief explanation of your decision
 
 User Message: {user_message}
@@ -134,3 +139,43 @@ Conversation History:
 User Message: {user_message}
 
 Generate a friendly, helpful response:"""
+
+
+rag_judge_instructions = """You are a judge evaluating if the retrieved information is sufficient to answer the user's question.
+
+Instructions:
+- Consider both relevance and completeness
+- If the retrieved documents directly address the question with enough detail → return true
+- If the information is partial, tangential, or missing key details → return false
+- If the documents are completely unrelated → return false
+
+Output Format:
+- Format your response as a JSON object with these exact keys:
+   - "sufficient": true or false
+   - "reasoning": Brief explanation of your decision
+
+User Question: {question}
+
+Retrieved Documents:
+{documents}
+
+Is this information sufficient to answer the question?"""
+
+
+rag_answer_instructions = """Generate a comprehensive answer to the user's question based on the retrieved documents.
+
+Instructions:
+- The current date is {current_date}
+- Base your answer strictly on the information in the retrieved documents
+- If the documents provide the answer, synthesize it clearly and concisely
+- Include relevant details and context from the documents
+- Cite which document(s) or sources the information comes from when possible
+- If the documents don't fully answer the question, acknowledge what's missing
+- Do not make up information not present in the documents
+
+User Question: {question}
+
+Retrieved Documents:
+{documents}
+
+Generate a well-structured answer based on the documents:"""

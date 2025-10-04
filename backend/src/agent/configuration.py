@@ -43,6 +43,25 @@ class Configuration(BaseModel):
         },
     )
 
+    rag_model: str = Field(
+        default="gemini-2.5-flash",
+        metadata={
+            "description": "The name of the language model to use for RAG operations."
+        },
+    )
+
+    judge_model: str = Field(
+        default="gemini-2.5-flash",
+        metadata={
+            "description": "The name of the language model to use for judging RAG sufficiency."
+        },
+    )
+
+    rag_top_k: int = Field(
+        default=3,
+        metadata={"description": "The number of documents to retrieve from the knowledge base."},
+    )
+
     number_of_initial_queries: int = Field(
         default=3,
         metadata={"description": "The number of initial search queries to generate."},

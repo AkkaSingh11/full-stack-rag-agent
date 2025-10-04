@@ -4,6 +4,7 @@ frontend/dist/
 frontend/.vite/
 frontend/coverage/
 .DS_Store
+example_agents_langgraph/*
 *.local
 
 # Logs
@@ -200,3 +201,8 @@ cython_debug/
 #.idea/
 
 backend/.langgraph_api
+
+# RAG-related files
+backend/chroma_db/
+docs/*.pdf
+docs/*.docx

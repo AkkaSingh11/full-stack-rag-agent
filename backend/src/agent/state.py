@@ -20,6 +20,9 @@ class OverallState(TypedDict):
     research_loop_count: int
     reasoning_model: str
     route_decision: str
+    rag_chunks: str
+    rag_sufficient: bool
+    rag_sources: Annotated[list, operator.add]
 
 
 class ReflectionState(TypedDict):

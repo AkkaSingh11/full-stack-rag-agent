@@ -25,8 +25,17 @@ class Reflection(BaseModel):
 
 class RouteDecision(BaseModel):
     intent: str = Field(
-        description="The classified intent: either 'conversational' for greetings, chitchat, follow-ups, or 'research' for questions requiring web search."
+        description="The classified intent: 'conversational' for greetings/chitchat, 'rag' for document/KB queries, or 'research' for web search questions."
     )
     reasoning: str = Field(
         description="Brief explanation of why this intent was chosen."
+    )
+
+
+class RagJudge(BaseModel):
+    sufficient: bool = Field(
+        description="Whether the retrieved documents are sufficient to answer the user's question."
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why the retrieved information is or isn't sufficient."
     )
