@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A fullstack RAG (Retrieval-Augmented Generation) application with a React frontend and LangGraph backend. The backend implements an iterative research agent using Google's Gemini models that:
-1. Generates optimized search queries from user questions
-2. Performs web research using Google Search API
-3. Reflects on results to identify knowledge gaps
-4. Iteratively refines searches until sufficient information is gathered
-5. Synthesizes a final answer with citations
+A fullstack RAG (Retrieval-Augmented Generation) application with a React frontend and LangGraph backend. The backend implements an intelligent research agent with an orchestrator router pattern using Google's Gemini models that:
+1. **Routes queries intelligently** - Classifies user input as conversational (greetings, chitchat), rag (document queries), or research (web search questions)
+2. **RAG Path** - Retrieves documents from local knowledge base, judges sufficiency, and generates answers or falls back to web search
+3. **Research Path** - Generates optimized search queries and performs web research using Google Search API
+4. **Reflects on results** to identify knowledge gaps and generates follow-up queries
+5. **Iteratively refines searches** until sufficient information is gathered
+6. **Synthesizes final answer** with citations (research/RAG paths) or provides direct conversational responses
+7. **Traces all operations** with LangSmith for debugging and monitoring (optional)
 
 ## Development Commands
 
@@ -41,12 +43,29 @@ python examples/cli_research.py "your question here"
 # Optional flags: --initial-queries, --max-loops, --reasoning-model
 ```
 
+**Testing router (new feature):**
+```bash
+cd backend
+python test_router_simple.py   # Quick test with "Hi"
+python test_router.py           # Full test suite
+```
+
+**Ingesting documents for RAG:**
+```bash
+# Create docs directory if it doesn't exist
+mkdir -p docs
+
+# Add your PDF or DOCX files to the docs directory
+# Then run the ingestion script
+python backend/scripts/ingest_documents.py
+```
+
 ### Backend Commands
 
 **Install dependencies:**
 ```bash
 cd backend
-pip install .
+pip install -e .  # Use -e for editable install during development
 ```
 
 **Run tests:**
@@ -91,22 +110,53 @@ npm run lint      # ESLint
 **Core agent logic:** [backend/src/agent/graph.py](backend/src/agent/graph.py)
 
 The LangGraph agent uses a state graph with these nodes:
-- `generate_query`: Creates initial search queries from user input (Gemini 2.0 Flash)
+- `route_query`: Classifies user intent as "conversational", "rag", or "research" (Gemini 2.5 Flash)
+- `conversational_response`: Generates friendly responses for greetings/chitchat (Gemini 2.5 Flash)
+- `rag_lookup`: **NEW** - Retrieves relevant documents from ChromaDB knowledge base using Gemini embeddings
+- `judge_sufficiency`: **NEW** - Evaluates if retrieved documents are sufficient to answer the question (Gemini 2.5 Flash)
+- `finalize_rag_answer`: **NEW** - Synthesizes answer from retrieved documents (Gemini 2.5 Flash)
+- `generate_query`: Creates initial search queries from user input (Gemini 2.5 Flash)
 - `web_research`: Executes web searches using Google Search API (runs in parallel for multiple queries)
 - `reflection`: Analyzes results for knowledge gaps and generates follow-up queries (Gemini 2.5 Flash)
 - `evaluate_research`: Routes to either more research or finalization
-- `finalize_answer`: Synthesizes final answer with citations (Gemini 2.5 Pro by default)
+- `finalize_answer`: Synthesizes final answer with citations (Gemini 2.5 Flash by default)
+
+**Graph Flow:**
+```
+START → route_query → {
+  conversational → conversational_response → END
+  rag → rag_lookup → judge_sufficiency → {
+    sufficient → finalize_rag_answer → END
+    insufficient → generate_query → web_research → reflection → evaluate_research → finalize_answer → END
+  }
+  research → generate_query → web_research → reflection → evaluate_research → finalize_answer → END
+}
+```
 
 **State management:** [backend/src/agent/state.py](backend/src/agent/state.py)
-- `OverallState`: Main graph state with messages, queries, results, sources
+- `OverallState`: Main graph state with messages, queries, results, sources, **route_decision**, **rag_chunks**, **rag_sufficient**, **rag_sources**
 - `ReflectionState`: Reflection output (sufficiency, knowledge gaps, follow-ups)
 - `QueryGenerationState`: Search query generation output
 - `WebSearchState`: Individual web search parameters
 
+**Schemas:** [backend/src/agent/tools_and_schemas.py](backend/src/agent/tools_and_schemas.py)
+- `SearchQueryList`: Structured output for search queries
+- `Reflection`: Structured output for reflection analysis
+- `RouteDecision`: Structured output for 3-way routing (intent: "conversational"/"rag"/"research" + reasoning)
+- `RagJudge`: **NEW** - Structured output for RAG sufficiency evaluation (sufficient + reasoning)
+
 **Configuration:** [backend/src/agent/configuration.py](backend/src/agent/configuration.py)
-- Models: `query_generator_model`, `reflection_model`, `answer_model`
-- Parameters: `number_of_initial_queries` (default: 3), `max_research_loops` (default: 2)
+- Models: `router_model`, `conversational_model`, `query_generator_model`, `reflection_model`, `answer_model`, **`rag_model`**, **`judge_model`**
+- Parameters: `number_of_initial_queries` (default: 3), `max_research_loops` (default: 2), **`rag_top_k` (default: 3)**
 - Can be configured via environment variables or RunnableConfig
+- All models default to `gemini-2.5-flash`
+
+**Vector Store:** [backend/src/agent/vector_store.py](backend/src/agent/vector_store.py)
+- ChromaDB with Gemini embeddings (`gemini-embedding-001`)
+- Singleton pattern for efficient initialization
+- Document loading for PDF and DOCX formats
+- RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
+- Storage location: `backend/chroma_db/`
 
 **API server:** [backend/src/agent/app.py](backend/src/agent/app.py)
 - FastAPI app that serves the LangGraph agent
@@ -123,6 +173,7 @@ The LangGraph agent uses a state graph with these nodes:
 - Uses `@langchain/langgraph-sdk` for streaming agent events
 - Switches API URL based on environment (dev: localhost:2024, prod: localhost:8123)
 - Processes streaming events from agent nodes into timeline activities
+- **NEW events:** `route_query` (shows routing decision), `conversational_response` (direct responses)
 
 **Key components:**
 - `WelcomeScreen`: Initial landing screen
@@ -143,8 +194,20 @@ The LangGraph agent uses a state graph with these nodes:
 GEMINI_API_KEY="your_api_key_here"
 ```
 
+**Optional for LangSmith tracing (recommended for debugging):**
+```
+LANGSMITH_API_KEY="your_langsmith_key"
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=fullstack-rag-agent
+```
+
+**Optional for web search fallback:**
+```
+TAVILY_API_KEY="your_tavily_key"
+```
+Note: Tavily is used as a fallback when RAG documents are insufficient. If not provided, the agent will still work but web search fallback won't be available.
+
 **Optional for deployment:**
-- `LANGSMITH_API_KEY`: For LangSmith tracing/monitoring
 - `REDIS_URI`: Redis for pub-sub streaming (required in production)
 - `POSTGRES_URI`: Postgres for state persistence (required in production)
 
@@ -168,6 +231,20 @@ The Dockerfile:
 
 ## Key Implementation Details
 
+**Orchestrator Router Pattern:** The agent intelligently routes queries in 3 ways:
+- **Conversational queries** (greetings, chitchat) → Direct LLM response (no web search)
+- **RAG queries** (document questions) → Knowledge base retrieval → Sufficiency judgment → Answer or web fallback
+- **Research queries** (factual questions) → Full web research flow
+- Uses LLM-based classification with structured output (`RouteDecision`)
+- Reduces latency and API costs for simple interactions
+
+**RAG Pipeline:** Local knowledge base querying with intelligent fallback:
+- Retrieves top-k documents from ChromaDB using semantic search
+- Judge LLM evaluates if retrieved docs are sufficient
+- If sufficient: synthesizes answer from documents
+- If insufficient: falls back to web research for additional information
+- Supports PDF and DOCX document ingestion
+
 **Parallel web research:** The agent uses LangGraph's `Send` API to spawn multiple `web_research` nodes in parallel, one per search query.
 
 **Citation handling:** Uses Google's native search grounding metadata. URLs are resolved to short URLs during research to save tokens, then replaced with original URLs in the final answer.
@@ -175,8 +252,71 @@ The Dockerfile:
 **Iterative refinement:** The reflection node evaluates if gathered information is sufficient. If not, it generates follow-up queries and continues research (up to `max_research_loops`).
 
 **Model selection:** Different Gemini models for different tasks:
-- Query generation: Fast model (2.0 Flash)
+- Router: Fast classification (2.5 Flash)
+- Conversational: Friendly responses (2.5 Flash)
+- RAG answer: Document-based responses (2.5 Flash)
+- RAG judge: Sufficiency evaluation (2.5 Flash)
+- Query generation: Fast model (2.5 Flash)
 - Reflection: Reasoning model (2.5 Flash)
-- Final answer: High-quality model (2.5 Pro)
+- Final answer: High-quality model (2.5 Flash)
+
+**LangSmith Tracing:** Auto-enabled when `LANGSMITH_API_KEY` is set in environment. Traces all graph executions for debugging and monitoring. View traces at https://smith.langchain.com/
 
 **URL management:** See [backend/src/agent/utils.py](backend/src/agent/utils.py) for citation extraction, URL resolution, and marker insertion logic.
+
+## Recent Updates
+
+### RAG Integration (November 2025)
+- **Implementation:** Added full RAG (Retrieval-Augmented Generation) capabilities with local knowledge base
+- **New components:**
+  - `vector_store.py`: ChromaDB integration with Gemini embeddings (3072-dimensional vectors)
+  - `ingest_documents.py`: CLI tool for batch document ingestion
+  - Test scripts: `test_rag_retrieval.py`, `test_db_details.py`
+- **New nodes:** `rag_lookup`, `judge_sufficiency`, `finalize_rag_answer`
+- **New prompts:** `rag_judge_instructions`, `rag_answer_instructions`
+- **New schemas:** `RagJudge` for sufficiency evaluation
+- **Updated router:** 3-way routing (conversational/rag/research)
+- **Frontend updates:**
+  - Added RAG event handling in ActivityTimeline
+  - Enter key now triggers search (Shift+Enter for new line)
+
+**Benefits:**
+- ✅ Local knowledge base for faster, context-aware responses
+- ✅ Intelligent web fallback when documents are insufficient
+- ✅ Support for PDF and DOCX document ingestion (RecursiveCharacterTextSplitter)
+- ✅ Reduced API costs for document-related queries (no web search needed)
+- ✅ Citations from local documents
+- ✅ 537 chunks successfully ingested from legal documents
+- ✅ Verified embeddings stored in ChromaDB
+
+**Testing the RAG system:**
+```bash
+# Ingest documents
+python backend/scripts/ingest_documents.py
+
+# Test retrieval
+python test_rag_retrieval.py
+
+# Verify database
+python test_db_details.py
+```
+
+### Orchestrator Router Pattern (October 2025)
+- **Branch:** `feature/orchestrator-router-langsmith`
+- **Implementation:** Added intelligent routing to avoid web searches for conversational queries
+- **New nodes:** `route_query`, `conversational_response`
+- **New prompts:** `router_instructions`, `conversational_instructions`
+- **Test coverage:** `test_router.py`, `test_router_simple.py`
+- **Documentation:** See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for full details
+
+**Benefits:**
+- ✅ Faster responses for greetings and chitchat (no web search latency)
+- ✅ Reduced API costs (no Google Search calls for simple queries)
+- ✅ Better UX with instant conversational responses
+- ✅ Full observability with LangSmith tracing
+
+**Testing the router:**
+```bash
+cd backend
+python test_router_simple.py  # Should show: Route=conversational, Response="Hi there! 👋..."
+```

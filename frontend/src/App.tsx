@@ -29,7 +29,50 @@ export default function App() {
     messagesKey: "messages",
     onUpdateEvent: (event: any) => {
       let processedEvent: ProcessedEvent | null = null;
-      if (event.generate_query) {
+      if (event.route_query) {
+        const routeDecision = event.route_query?.route_decision;
+        let routeData = "";
+        if (routeDecision === "conversational") {
+          routeData = "Detected conversational query - generating direct response";
+        } else if (routeDecision === "rag") {
+          routeData = "Detected document query - searching knowledge base";
+        } else {
+          routeData = "Detected research query - initiating web search";
+        }
+        processedEvent = {
+          title: "Routing Query",
+          data: routeData,
+        };
+      } else if (event.conversational_response) {
+        processedEvent = {
+          title: "Conversational Response",
+          data: "Generating friendly response",
+        };
+        hasFinalizeEventOccurredRef.current = true;
+      } else if (event.rag_lookup) {
+        const ragChunks = event.rag_lookup?.rag_chunks || "";
+        const hasChunks = ragChunks && ragChunks.trim().length > 0;
+        processedEvent = {
+          title: "Knowledge Base Search",
+          data: hasChunks
+            ? "Found relevant documents in knowledge base"
+            : "No relevant documents found in knowledge base",
+        };
+      } else if (event.judge_sufficiency) {
+        const isSufficient = event.judge_sufficiency?.rag_sufficient;
+        processedEvent = {
+          title: "Evaluating Documents",
+          data: isSufficient
+            ? "Documents contain sufficient information"
+            : "Documents insufficient - falling back to web search",
+        };
+      } else if (event.finalize_rag_answer) {
+        processedEvent = {
+          title: "Generating Answer",
+          data: "Composing answer from knowledge base",
+        };
+        hasFinalizeEventOccurredRef.current = true;
+      } else if (event.generate_query) {
         const searchQuery = event.generate_query?.search_query;
         const queryData = Array.isArray(searchQuery)
           ? searchQuery.join(", ")

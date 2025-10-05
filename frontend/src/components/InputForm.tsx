@@ -36,11 +36,12 @@ export const InputForm: React.FC<InputFormProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Submit with Ctrl+Enter (Windows/Linux) or Cmd+Enter (Mac)
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    // Submit with Enter (without Shift for new line)
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleInternalSubmit();
     }
+    // Allow Shift+Enter for new line (default textarea behavior)
   };
 
   const isSubmitDisabled = !internalInputValue.trim() || isLoading;
@@ -59,7 +60,7 @@ export const InputForm: React.FC<InputFormProps> = ({
           value={internalInputValue}
           onChange={(e) => setInternalInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Who won the Euro 2024 and scored the most goals?"
+          placeholder="Ask a question... (Press Enter to search, Shift+Enter for new line)"
           className={`w-full text-neutral-100 placeholder-neutral-500 resize-none border-0 focus:outline-none focus:ring-0 outline-none focus-visible:ring-0 shadow-none
                         md:text-base  min-h-[56px] max-h-[200px]`}
           rows={1}

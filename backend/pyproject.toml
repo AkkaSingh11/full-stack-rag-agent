@@ -18,6 +18,10 @@ dependencies = [
     "langgraph-api",
     "fastapi",
     "google-genai",
+    "chromadb>=0.4.22",
+    "pypdf>=3.17.0",
+    "docx2txt>=0.8",
+    "langchain-community>=0.3.19",
 ]
 
 
