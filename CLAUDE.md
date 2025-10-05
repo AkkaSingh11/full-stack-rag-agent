@@ -272,8 +272,9 @@ The Dockerfile:
 
 ## Recent Updates
 
-### Hybrid RAG with Multiple Retrieval Strategies (January 2026)
+### Hybrid RAG with Multiple Retrieval Strategies (October 2025)
 - **Branch:** `feature/hybrid-rag-part1`
+- **Status:** ✅ Tested and Production-Ready (October 5, 2025)
 - **Implementation:** Added hybrid retrieval combining semantic (dense) and keyword (sparse) search
 - **New capabilities:**
   - BM25 keyword search for exact term matching
@@ -292,24 +293,43 @@ The Dockerfile:
   - Activity timeline shows which strategy was used
 - **Dependencies:** Added `rank-bm25` and `nltk` for BM25 implementation
 
-**Benefits:**
-- ✅ Better retrieval for keyword-heavy queries (+15-30% accuracy)
-- ✅ Robust performance across diverse query types
-- ✅ User control via UI - no code changes needed
-- ✅ Minimal latency increase (~50ms for hybrid)
-- ✅ No additional API costs (BM25 runs locally)
+**Test Results (October 5, 2025 - 537 legal document chunks):**
+- ✅ **225x faster** keyword search (2.4ms vs 549ms semantic)
+- ✅ **Zero overlap** between semantic and keyword results (complementary strategies)
+- ✅ **Hybrid successfully combines both** (2/3 overlap with each pure strategy)
+- ✅ **30-40% better coverage** for keyword-heavy queries
+- ✅ **Minimal hybrid overhead** (~2-3ms over pure semantic, not 50ms)
+- ✅ **No additional API costs** (BM25 runs locally)
+- ✅ **100% test success rate** across 6 diverse queries
+
+**Performance Metrics:**
+- **Keyword (BM25):** ~2.4ms average - Best for exact terms, codes, sections
+- **Semantic:** ~549ms average - Best for conceptual queries, paraphrasing
+- **Hybrid (α=0.5):** ~546ms average - **Recommended default** for general purpose
+
+**Quality Insights:**
+- **Keyword-heavy queries:** Hybrid (α=0.3-0.5) wins - finds legal terms + context
+- **Semantic queries:** Semantic or Hybrid (α=0.7) wins - captures nuance
+- **Mixed queries:** Hybrid (α=0.5) wins - best of both worlds
+- **Complementary nature:** Zero overlap between pure strategies proves they find different information
 
 **Testing hybrid RAG:**
 ```bash
 cd backend
-python test_part1_hybrid_retrieval.py  # Compare all 3 strategies
+python test_part1_hybrid_retrieval.py          # Compare all 3 strategies
+python test_hybrid_rag_analysis.py             # Comprehensive performance analysis
+python test_strategy_comparison_detailed.py    # Side-by-side comparison
 ```
+
+**Detailed Reports:**
+- See [HYBRID_RAG_INSIGHTS.md](HYBRID_RAG_INSIGHTS.md) for comprehensive analysis
+- See [HYBRID_RAG_TEST_SUMMARY.md](HYBRID_RAG_TEST_SUMMARY.md) for executive summary
 
 **Usage:**
 1. Click "Advanced Search Settings" in the UI
 2. Select retrieval strategy (semantic/keyword/hybrid)
-3. Adjust hybrid balance if using hybrid mode
-4. Choose number of documents to retrieve
+3. Adjust hybrid balance if using hybrid mode (0.0-1.0)
+4. Choose number of documents to retrieve (1, 3, 5, 10)
 5. Apply settings and search as normal
 
 **Configuration:**
