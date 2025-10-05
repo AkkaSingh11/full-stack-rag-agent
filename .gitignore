@@ -5,6 +5,7 @@ frontend/.vite/
 frontend/coverage/
 .DS_Store
 example_agents_langgraph/*
+archive/
 *.local
 
 # Logs
