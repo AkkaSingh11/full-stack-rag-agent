@@ -11,7 +11,6 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.retrievers import EnsembleRetriever
 from rank_bm25 import BM25Okapi
 import nltk
 from nltk.tokenize import word_tokenize
@@ -302,17 +301,45 @@ def get_hybrid_retriever(k: int = 3, alpha: float = 0.5) -> BaseRetriever:
                0.0 = pure BM25, 0.5 = balanced, 1.0 = pure semantic
 
     Returns:
-        EnsembleRetriever that combines both approaches
+        Custom HybridRetriever that combines both approaches
     """
-    semantic_retriever = get_semantic_retriever(k=k)
-    bm25_retriever = get_bm25_retriever(k=k)
 
-    if semantic_retriever and bm25_retriever:
-        return EnsembleRetriever(
-            retrievers=[bm25_retriever, semantic_retriever],
-            weights=[1 - alpha, alpha]  # BM25 weight, Semantic weight
-        )
-    return semantic_retriever  # Fallback to semantic if BM25 unavailable
+    class HybridRetriever(BaseRetriever):
+        k: int = 3
+        alpha: float = 0.5
+
+        def _get_relevant_documents(
+            self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+        ) -> List[Document]:
+            semantic_retriever = get_semantic_retriever(k=self.k)
+            bm25_retriever = get_bm25_retriever(k=self.k)
+
+            if not semantic_retriever:
+                return []
+
+            # Get results from both retrievers
+            semantic_docs = semantic_retriever.invoke(query)
+            bm25_docs = bm25_retriever.invoke(query) if bm25_retriever else []
+
+            # Combine and deduplicate based on content
+            seen_content = set()
+            combined_docs = []
+
+            # Weight semantic results by alpha
+            for doc in semantic_docs[:int(self.k * self.alpha) + 1]:
+                if doc.page_content not in seen_content:
+                    seen_content.add(doc.page_content)
+                    combined_docs.append(doc)
+
+            # Weight BM25 results by (1 - alpha)
+            for doc in bm25_docs[:int(self.k * (1 - self.alpha)) + 1]:
+                if doc.page_content not in seen_content:
+                    seen_content.add(doc.page_content)
+                    combined_docs.append(doc)
+
+            return combined_docs[:self.k]
+
+    return HybridRetriever(k=k, alpha=alpha)
 
 
 def get_retriever_by_strategy(

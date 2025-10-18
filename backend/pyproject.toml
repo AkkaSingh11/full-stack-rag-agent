@@ -7,31 +7,31 @@ authors = [
 ]
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11,<4.0"
+requires-python = ">=3.11"
 dependencies = [
-    "langgraph>=0.2.6",
-    "langchain>=0.3.19",
+    "langgraph",
+    "langchain",
     "langchain-google-genai",
-    "python-dotenv>=1.0.1",
-    "langgraph-sdk>=0.1.57",
+    "python-dotenv",
+    "langgraph-sdk",
     "langgraph-cli",
     "langgraph-api",
     "fastapi",
     "google-genai",
-    "chromadb>=0.4.22",
-    "pypdf>=3.17.0",
-    "docx2txt>=0.8",
-    "langchain-community>=0.3.19",
-    "rank-bm25>=0.2.2",
-    "nltk>=3.8",
+    "chromadb",
+    "pypdf",
+    "docx2txt",
+    "langchain-community",
+    "rank-bm25",
+    "nltk",
 ]
 
 
 [project.optional-dependencies]
-dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
+dev = ["mypy", "ruff"]
 
 [build-system]
-requires = ["setuptools>=73.0.0", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.ruff]
@@ -60,6 +60,6 @@ convention = "google"
 
 [dependency-groups]
 dev = [
-    "langgraph-cli[inmem]>=0.1.71",
-    "pytest>=8.3.5",
+    "langgraph-cli[inmem]",
+    "pytest",
 ]
