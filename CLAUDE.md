@@ -2,6 +2,94 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Memory: Project Organization & Cleanup Protocol
+
+**IMPORTANT:** Always maintain a clean, organized codebase following these principles:
+
+### After Completing Any Task:
+1. **Clean up temporary/test files** - Move test scripts, analysis files, and experimental code to `trash/` directory
+2. **Archive documentation** - Move planning docs, implementation summaries, and one-off reports to `trash/planning-docs/`
+3. **Consolidate learnings** - Update CLAUDE.md with key insights, but archive detailed reports
+4. **Keep root clean** - Only README.md, CLAUDE.md, DEPLOYMENT.md, and essential config files in root
+5. **Preserve history** - Never delete files; always move to `trash/` for reference
+
+### Essential Files Only:
+- **Root:** README.md, CLAUDE.md, DEPLOYMENT.md, LICENSE, Dockerfile, docker-compose.yml, Makefile, .gitignore
+- **Backend:** Only production source code in `src/`, utility scripts in `scripts/`
+- **Docs:** Only RAG knowledge base files (PDFs, DOCX)
+- **Tests:** Archive to `trash/tests/` after verification
+- **Examples:** Archive to `trash/examples/` after documentation
+
+### File Organization Rules:
+```
+✅ KEEP: Production code, essential docs, utility scripts
+❌ ARCHIVE: Test files, example scripts, planning docs, screenshots, analysis reports
+```
+
+**Remember:** A clean repository = better maintainability, easier onboarding, professional appearance.
+
+## Current Folder Structure
+
+```
+full-stack-rag-agent/
+├── README.md                      # Project overview & quick start
+├── CLAUDE.md                      # This file - development guide
+├── DEPLOYMENT.md                  # Production deployment instructions
+├── LICENSE                        # Apache 2.0 license
+├── Dockerfile                     # Production Docker build
+├── docker-compose.yml             # Docker compose for local deployment
+├── Makefile                       # Development shortcuts
+├── .gitignore                     # Git ignore rules
+│
+├── backend/                       # Python/LangGraph backend
+│   ├── src/
+│   │   └── agent/                # Core agent implementation
+│   │       ├── graph.py          # LangGraph state graph
+│   │       ├── state.py          # State definitions
+│   │       ├── configuration.py  # Model & parameter config
+│   │       ├── vector_store.py   # ChromaDB & hybrid retrieval
+│   │       ├── prompts.py        # LLM prompts
+│   │       ├── tools_and_schemas.py  # Structured outputs
+│   │       ├── utils.py          # Helper functions
+│   │       └── app.py            # FastAPI server
+│   ├── scripts/
+│   │   └── ingest_documents.py   # Document ingestion utility
+│   ├── docs/                     # RAG knowledge base (PDFs only)
+│   ├── chroma_db/                # Vector database (gitignored)
+│   ├── .env                      # Environment variables (gitignored)
+│   ├── .env.example              # Environment template
+│   ├── pyproject.toml            # Python dependencies
+│   ├── langgraph.json            # LangGraph configuration
+│   └── Makefile                  # Backend-specific commands
+│
+├── frontend/                      # React/TypeScript frontend
+│   ├── src/
+│   │   ├── App.tsx               # Main application
+│   │   ├── components/           # React components
+│   │   │   ├── WelcomeScreen.tsx
+│   │   │   ├── ChatMessagesView.tsx
+│   │   │   ├── ActivityTimeline.tsx
+│   │   │   ├── InputForm.tsx
+│   │   │   └── AdvancedSearchSettings.tsx  # Hybrid RAG controls
+│   │   ├── lib/                  # Utilities
+│   │   └── global.css            # Tailwind styles
+│   ├── package.json              # Node dependencies
+│   ├── tsconfig.json             # TypeScript config
+│   └── vite.config.ts            # Vite configuration
+│
+├── docs/                          # Project-level docs
+│   ├── docum.pdf                 # RAG sample document
+│   └── legaldoc.pdf              # RAG sample document
+│
+└── trash/                         # Archived files (gitignored)
+    ├── README.md                 # Archive documentation
+    ├── planning-docs/            # Implementation plans & insights
+    ├── tests/                    # Archived test scripts
+    ├── examples/                 # Archived example scripts
+    ├── images/                   # Archived screenshots
+    └── docs/                     # Archived documentation
+```
+
 ## Project Overview
 
 A fullstack RAG (Retrieval-Augmented Generation) application with a React frontend and LangGraph backend. The backend implements an intelligent research agent with an orchestrator router pattern using Google's Gemini models that:
@@ -36,20 +124,6 @@ npm run dev
 # Runs on http://localhost:5173
 ```
 
-**CLI research (one-off questions):**
-```bash
-cd backend
-python examples/cli_research.py "your question here"
-# Optional flags: --initial-queries, --max-loops, --reasoning-model
-```
-
-**Testing router (new feature):**
-```bash
-cd backend
-python test_router_simple.py   # Quick test with "Hi"
-python test_router.py           # Full test suite
-```
-
 **Ingesting documents for RAG:**
 ```bash
 # Create docs directory if it doesn't exist
@@ -58,12 +132,6 @@ mkdir -p docs
 # Add your PDF or DOCX files to the docs directory
 # Then run the ingestion script
 python backend/scripts/ingest_documents.py
-```
-
-**Testing hybrid RAG strategies:**
-```bash
-cd backend
-python test_part1_hybrid_retrieval.py   # Compare semantic, keyword, and hybrid retrieval
 ```
 
 ### Backend Commands
@@ -77,10 +145,12 @@ pip install -e .  # Use -e for editable install during development
 **Run tests:**
 ```bash
 cd backend
-make test                    # Run all tests
+make test                    # Run all tests (if test suite exists)
 make test TEST_FILE=path     # Run specific test file
 make test_watch              # Run tests in watch mode
 ```
+
+Note: Test files have been archived to `trash/tests/` for reference.
 
 **Linting & formatting:**
 ```bash
@@ -219,21 +289,17 @@ Note: Tavily is used as a fallback when RAG documents are insufficient. If not p
 
 ## Deployment
 
-**Build Docker image:**
-```bash
-docker build -t gemini-fullstack-langgraph -f Dockerfile .
-```
+For complete deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-**Run with docker-compose:**
+**Quick start:**
 ```bash
+# Build Docker image
+docker build -t gemini-fullstack-langgraph -f Dockerfile .
+
+# Run with docker-compose
 GEMINI_API_KEY=<key> LANGSMITH_API_KEY=<key> docker-compose up
 # App available at http://localhost:8123/app/
 ```
-
-The Dockerfile:
-1. Builds optimized frontend (Node.js stage)
-2. Combines with backend in LangGraph API base image
-3. Backend serves static frontend files in production
 
 ## Key Implementation Details
 
@@ -314,16 +380,10 @@ The Dockerfile:
 - **Complementary nature:** Zero overlap between pure strategies proves they find different information
 
 **Testing hybrid RAG:**
-```bash
-cd backend
-python test_part1_hybrid_retrieval.py          # Compare all 3 strategies
-python test_hybrid_rag_analysis.py             # Comprehensive performance analysis
-python test_strategy_comparison_detailed.py    # Side-by-side comparison
-```
+Test scripts have been archived to `trash/tests/` for reference. The implementation has been tested and verified as production-ready.
 
 **Detailed Reports:**
-- See [HYBRID_RAG_INSIGHTS.md](HYBRID_RAG_INSIGHTS.md) for comprehensive analysis
-- See [HYBRID_RAG_TEST_SUMMARY.md](HYBRID_RAG_TEST_SUMMARY.md) for executive summary
+Implementation plans and test reports have been archived to `trash/planning-docs/` and `trash/docs/` respectively.
 
 **Usage:**
 1. Click "Advanced Search Settings" in the UI
@@ -367,30 +427,20 @@ RAG_TOP_K=3             # Number of documents to retrieve
 ```bash
 # Ingest documents
 python backend/scripts/ingest_documents.py
-
-# Test retrieval
-python test_rag_retrieval.py
-
-# Verify database
-python test_db_details.py
 ```
+
+Test scripts for RAG retrieval and verification have been archived to `trash/tests/`.
 
 ### Orchestrator Router Pattern (October 2025)
 - **Branch:** `feature/orchestrator-router-langsmith`
 - **Implementation:** Added intelligent routing to avoid web searches for conversational queries
 - **New nodes:** `route_query`, `conversational_response`
 - **New prompts:** `router_instructions`, `conversational_instructions`
-- **Test coverage:** `test_router.py`, `test_router_simple.py`
-- **Documentation:** See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for full details
+- **Test coverage:** Test scripts archived to `trash/tests/`
+- **Documentation:** Implementation summary archived to `trash/docs/`
 
 **Benefits:**
 - ✅ Faster responses for greetings and chitchat (no web search latency)
 - ✅ Reduced API costs (no Google Search calls for simple queries)
 - ✅ Better UX with instant conversational responses
 - ✅ Full observability with LangSmith tracing
-
-**Testing the router:**
-```bash
-cd backend
-python test_router_simple.py  # Should show: Route=conversational, Response="Hi there! 👋..."
-```

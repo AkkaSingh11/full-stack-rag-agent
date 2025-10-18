@@ -17,6 +17,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+trash
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -207,3 +208,6 @@ backend/.langgraph_api
 backend/chroma_db/
 docs/*.pdf
 docs/*.docx
+
+# Archived/trash files
+trash/
