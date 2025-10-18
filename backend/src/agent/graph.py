@@ -35,7 +35,7 @@ from agent.utils import (
     insert_citation_markers,
     resolve_urls,
 )
-from agent.vector_store import get_retriever
+from agent.vector_store import get_retriever, get_retriever_by_strategy
 
 load_dotenv()
 
@@ -372,14 +372,14 @@ def conversational_response(state: OverallState, config: RunnableConfig):
 def rag_lookup(state: OverallState, config: RunnableConfig):
     """LangGraph node that retrieves documents from the knowledge base.
 
-    Performs semantic search on the vector store using the user's question.
+    Now supports multiple retrieval strategies: semantic, keyword, hybrid.
 
     Args:
         state: Current graph state containing the user's question
         config: Configuration for the runnable, including retrieval settings
 
     Returns:
-        Dictionary with rag_chunks and rag_sources keys
+        Dictionary with rag_chunks, rag_sources, and rag_strategy keys
     """
     configurable = Configuration.from_runnable_config(config)
 
@@ -387,8 +387,17 @@ def rag_lookup(state: OverallState, config: RunnableConfig):
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
     query = user_messages[-1].content if user_messages else ""
 
-    # Get retriever with configured top_k
-    retriever = get_retriever(k=configurable.rag_top_k)
+    # Get strategy and parameters from config
+    strategy = configurable.rag_strategy
+    k = configurable.rag_top_k
+    alpha = configurable.hybrid_alpha
+
+    # Get retriever based on strategy
+    retriever = get_retriever_by_strategy(
+        strategy=strategy,
+        k=k,
+        alpha=alpha
+    )
 
     if retriever is None:
         # No vector store available, return empty results
@@ -396,6 +405,7 @@ def rag_lookup(state: OverallState, config: RunnableConfig):
             "rag_chunks": "",
             "rag_sources": [],
             "rag_sufficient": False,
+            "rag_strategy": strategy,
         }
 
     # Retrieve documents
@@ -407,6 +417,7 @@ def rag_lookup(state: OverallState, config: RunnableConfig):
             "rag_chunks": "",
             "rag_sources": [],
             "rag_sufficient": False,
+            "rag_strategy": strategy,
         }
 
     # Format retrieved documents
@@ -426,6 +437,7 @@ def rag_lookup(state: OverallState, config: RunnableConfig):
     return {
         "rag_chunks": chunks_text,
         "rag_sources": sources,
+        "rag_strategy": strategy,  # Track which strategy was used
     }
 
 

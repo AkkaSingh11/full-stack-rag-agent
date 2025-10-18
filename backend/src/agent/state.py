@@ -23,6 +23,7 @@ class OverallState(TypedDict):
     rag_chunks: str
     rag_sufficient: bool
     rag_sources: Annotated[list, operator.add]
+    rag_strategy: str  # Tracks which RAG strategy was used: "semantic", "keyword", or "hybrid"
 
 
 class ReflectionState(TypedDict):

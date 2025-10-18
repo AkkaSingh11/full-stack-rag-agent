@@ -62,6 +62,21 @@ class Configuration(BaseModel):
         metadata={"description": "The number of documents to retrieve from the knowledge base."},
     )
 
+    rag_strategy: str = Field(
+        default="semantic",
+        metadata={
+            "description": "RAG retrieval strategy: 'semantic', 'keyword', or 'hybrid'"
+        },
+    )
+
+    hybrid_alpha: float = Field(
+        default=0.5,
+        metadata={
+            "description": "Balance between sparse (0) and dense (1) retrieval in hybrid mode. "
+                          "0.0 = pure keyword, 0.5 = balanced, 1.0 = pure semantic"
+        },
+    )
+
     number_of_initial_queries: int = Field(
         default=3,
         metadata={"description": "The number of initial search queries to generate."},

@@ -2,13 +2,24 @@
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from rank_bm25 import BM25Okapi
+import nltk
+from nltk.tokenize import word_tokenize
+
+# Download punkt tokenizer if not available
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab', quiet=True)
 
 # Get the project root directory (3 levels up from this file)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -21,6 +32,17 @@ EMBED_MODEL = "gemini-embedding-001"
 
 # Global vector store instance (singleton pattern)
 _vector_store = None
+
+# Global BM25 index (singleton pattern)
+_bm25_index = None
+_bm25_documents = None
+_bm25_metadatas = None
+_bm25_ids = None
+
+
+def _tokenize(text: str) -> List[str]:
+    """Simple tokenizer for BM25."""
+    return word_tokenize(text.lower())
 
 
 def load_documents(folder_path: str) -> List[Document]:
@@ -187,3 +209,159 @@ def get_retriever(k: int = 3):
     if vectordb:
         return vectordb.as_retriever(search_kwargs={"k": k})
     return None
+
+
+def _build_bm25_index():
+    """Build BM25 index from Chroma documents (singleton pattern)."""
+    global _bm25_index, _bm25_documents, _bm25_metadatas, _bm25_ids
+
+    if _bm25_index is not None:
+        return _bm25_index
+
+    # Get all documents from vector store
+    vectordb = get_or_create_vector_store()
+    if vectordb is None:
+        return None
+
+    # Retrieve all documents from Chroma
+    try:
+        all_data = vectordb.get()
+        _bm25_documents = all_data['documents']
+        _bm25_metadatas = all_data.get('metadatas', [])
+        _bm25_ids = all_data.get('ids', [])
+
+        if not _bm25_documents:
+            return None
+
+        # Tokenize all documents
+        tokenized_docs = [_tokenize(doc) for doc in _bm25_documents]
+
+        # Build BM25 index
+        _bm25_index = BM25Okapi(tokenized_docs)
+
+        print(f"Built BM25 index with {len(_bm25_documents)} documents")
+        return _bm25_index
+    except Exception as e:
+        print(f"Error building BM25 index: {e}")
+        return None
+
+
+def get_semantic_retriever(k: int = 3) -> BaseRetriever:
+    """Get dense/semantic retriever (current Chroma retriever)."""
+    vectordb = get_or_create_vector_store()
+    if vectordb:
+        return vectordb.as_retriever(search_kwargs={"k": k})
+    return None
+
+
+def get_bm25_retriever(k: int = 3) -> BaseRetriever:
+    """Get sparse/keyword retriever using BM25."""
+
+    class BM25Retriever(BaseRetriever):
+        k: int = 3
+
+        def _get_relevant_documents(
+            self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+        ) -> List[Document]:
+            bm25_index = _build_bm25_index()
+
+            if bm25_index is None or _bm25_documents is None:
+                return []
+
+            # Tokenize query
+            tokenized_query = _tokenize(query)
+
+            # Get BM25 scores
+            scores = bm25_index.get_scores(tokenized_query)
+
+            # Get top-k indices
+            top_k_indices = scores.argsort()[-self.k:][::-1]
+
+            # Build document objects
+            docs = []
+            for idx in top_k_indices:
+                if idx < len(_bm25_documents):
+                    doc = Document(
+                        page_content=_bm25_documents[idx],
+                        metadata=_bm25_metadatas[idx] if _bm25_metadatas and idx < len(_bm25_metadatas) else {}
+                    )
+                    docs.append(doc)
+
+            return docs
+
+    return BM25Retriever(k=k)
+
+
+def get_hybrid_retriever(k: int = 3, alpha: float = 0.5) -> BaseRetriever:
+    """Get hybrid retriever combining semantic + keyword search.
+
+    Args:
+        k: Number of documents to retrieve
+        alpha: Balance between sparse (0) and dense (1).
+               0.0 = pure BM25, 0.5 = balanced, 1.0 = pure semantic
+
+    Returns:
+        Custom HybridRetriever that combines both approaches
+    """
+
+    class HybridRetriever(BaseRetriever):
+        k: int = 3
+        alpha: float = 0.5
+
+        def _get_relevant_documents(
+            self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+        ) -> List[Document]:
+            semantic_retriever = get_semantic_retriever(k=self.k)
+            bm25_retriever = get_bm25_retriever(k=self.k)
+
+            if not semantic_retriever:
+                return []
+
+            # Get results from both retrievers
+            semantic_docs = semantic_retriever.invoke(query)
+            bm25_docs = bm25_retriever.invoke(query) if bm25_retriever else []
+
+            # Combine and deduplicate based on content
+            seen_content = set()
+            combined_docs = []
+
+            # Weight semantic results by alpha
+            for doc in semantic_docs[:int(self.k * self.alpha) + 1]:
+                if doc.page_content not in seen_content:
+                    seen_content.add(doc.page_content)
+                    combined_docs.append(doc)
+
+            # Weight BM25 results by (1 - alpha)
+            for doc in bm25_docs[:int(self.k * (1 - self.alpha)) + 1]:
+                if doc.page_content not in seen_content:
+                    seen_content.add(doc.page_content)
+                    combined_docs.append(doc)
+
+            return combined_docs[:self.k]
+
+    return HybridRetriever(k=k, alpha=alpha)
+
+
+def get_retriever_by_strategy(
+    strategy: Literal["semantic", "keyword", "hybrid"],
+    k: int = 3,
+    alpha: float = 0.5
+) -> BaseRetriever:
+    """Get retriever based on strategy configuration.
+
+    Args:
+        strategy: One of "semantic", "keyword", or "hybrid"
+        k: Number of documents to retrieve
+        alpha: Hybrid balance (only used for "hybrid" strategy)
+
+    Returns:
+        Configured retriever instance
+    """
+    if strategy == "semantic":
+        return get_semantic_retriever(k=k)
+    elif strategy == "keyword":
+        return get_bm25_retriever(k=k)
+    elif strategy == "hybrid":
+        return get_hybrid_retriever(k=k, alpha=alpha)
+    else:
+        return get_semantic_retriever(k=k)  # Default fallback

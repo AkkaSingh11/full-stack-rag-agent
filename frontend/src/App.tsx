@@ -21,6 +21,9 @@ export default function App() {
     initial_search_query_count: number;
     max_research_loops: number;
     reasoning_model: string;
+    rag_strategy: string;
+    hybrid_alpha: number;
+    rag_top_k: number;
   }>({
     apiUrl: import.meta.env.DEV
       ? "http://localhost:2024"
@@ -52,11 +55,22 @@ export default function App() {
       } else if (event.rag_lookup) {
         const ragChunks = event.rag_lookup?.rag_chunks || "";
         const hasChunks = ragChunks && ragChunks.trim().length > 0;
+        const strategy = event.rag_lookup?.rag_strategy || "semantic";
+
+        // Map strategy to display name and icon
+        const strategyDisplay = {
+          semantic: "🔍 Semantic Search",
+          keyword: "📝 Keyword Search",
+          hybrid: "⚡ Hybrid Search",
+        }[strategy] || strategy;
+
+        const data = hasChunks
+          ? `${strategyDisplay}: Found relevant documents`
+          : `${strategyDisplay}: No relevant documents found`;
+
         processedEvent = {
           title: "Knowledge Base Search",
-          data: hasChunks
-            ? "Found relevant documents in knowledge base"
-            : "No relevant documents found in knowledge base",
+          data: data,
         };
       } else if (event.judge_sufficiency) {
         const isSufficient = event.judge_sufficiency?.rag_sufficient;
@@ -149,7 +163,14 @@ export default function App() {
   }, [thread.messages, thread.isLoading, processedEventsTimeline]);
 
   const handleSubmit = useCallback(
-    (submittedInputValue: string, effort: string, model: string) => {
+    (
+      submittedInputValue: string,
+      effort: string,
+      model: string,
+      ragStrategy: string,
+      hybridAlpha: number,
+      ragTopK: number
+    ) => {
       if (!submittedInputValue.trim()) return;
       setProcessedEventsTimeline([]);
       hasFinalizeEventOccurredRef.current = false;
@@ -188,6 +209,9 @@ export default function App() {
         initial_search_query_count: initial_search_query_count,
         max_research_loops: max_research_loops,
         reasoning_model: model,
+        rag_strategy: ragStrategy,
+        hybrid_alpha: hybridAlpha,
+        rag_top_k: ragTopK,
       });
     },
     [thread]
